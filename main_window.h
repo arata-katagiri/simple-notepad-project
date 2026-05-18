@@ -33,11 +33,13 @@ private:
     void setup_tools_menu();
 
     void open_file();
+    void open_file(const QString& path);
     void save_file();
     void save_file_as();
     void update_title();
 
     void update_status_bar();
+    void update_recent_files();
 
     void apply_transform(const text_transform& transform) const;
 
@@ -59,6 +61,9 @@ private:
 
     spell_checker checker;
     spell_checker_highlighter* highlighter { nullptr };
+
+    QMenu* recent_files_menu { nullptr };
+    std::vector<QString> recent_files;
 };
 
 #endif // MAIN_WINDOW_H

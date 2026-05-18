@@ -6,14 +6,19 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QColorDialog>
 #include <QFileDialog>
 #include <QFont>
+#include <QFontDialog>
 #include <QHeaderView>
 #include <QKeySequence>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPoint>
+#include <QPrinter>
+#include <QPrintDialog>
 #include <QRegularExpression>
+#include <QSettings>
 #include <QStatusBar>
 #include <QTableWidgetItem>
 #include <QTextCharFormat>
@@ -52,6 +57,11 @@ main_window::main_window()
     update_status_bar();
 
     highlighter = new spell_checker_highlighter(editor->document(), checker);
+
+    QSettings settings("MyApp", "Notepad");
+    const auto list = settings.value("recentFiles").toStringList();
+    recent_files = std::vector(list.begin(), list.end());
+    update_recent_files();
 }
 
 main_window::~main_window() = default;
@@ -66,6 +76,8 @@ void main_window::setup_file_menu()
         current_file.clear();
         update_title();
     });
+
+    recent_files_menu = file_menu->addMenu("Recent Files");
 
     file_menu->addSeparator();
 
@@ -83,6 +95,17 @@ void main_window::setup_file_menu()
     connect(action_save_as, &QAction::triggered, this, [this] {
         save_file_as();
     });
+
+    auto* action_print = file_menu->addAction("Print...");
+    action_print->setShortcut(QKeySequence::Print);
+    connect(action_print, &QAction::triggered, this, [this] {
+        QPrinter printer;
+        if (QPrintDialog dialog(&printer, this); dialog.exec() == QDialog::Accepted) {
+            editor->print(&printer);
+        }
+    });
+
+
 
     file_menu->addSeparator();
 
@@ -125,19 +148,40 @@ void main_window::setup_edit_menu()
     connect(action_select_all, &QAction::triggered, editor, &QTextEdit::selectAll);
 
     connect(editor, &QTextEdit::textChanged, this, &main_window::update_status_bar);
+    connect(editor, &QTextEdit::cursorPositionChanged, this, &main_window::update_status_bar);
 }
 
 void main_window::setup_format_menu()
 {
     auto* format_menu = menuBar()->addMenu("Format");
-    auto* text_case_menu = format_menu->addMenu("Text Case");
 
+    auto* text_case_menu = format_menu->addMenu("Text Case");
     for (const auto& transform : transforms) {
         const auto* action = text_case_menu->addAction(QString::fromStdString(transform->name()));
         connect(action, &QAction::triggered, this, [this, &transform] {
             apply_transform(*transform);
         });
     }
+
+    const auto* action_font = format_menu->addAction("Font...");
+    connect(action_font, &QAction::triggered, this, [this]{
+        bool ok;
+        const QFont font = QFontDialog::getFont(&ok, editor->font(), this);
+        if (ok) {
+            QTextCharFormat fmt;
+            fmt.setFont(font);
+            editor->mergeCurrentCharFormat(fmt);
+        }
+    });
+
+    const auto* action_color = format_menu->addAction("Text Color...");
+    connect(action_color, &QAction::triggered, this, [this]{
+        if (const QColor color = QColorDialog::getColor(editor->textColor(), this); color.isValid()) {
+            QTextCharFormat fmt;
+            fmt.setForeground(color);
+            editor->mergeCurrentCharFormat(fmt);
+        }
+    });
 }
 
 void main_window::setup_format_toolbar()
@@ -249,6 +293,14 @@ void main_window::open_file()
     if (path.isEmpty()) {
         return;
     }
+    open_file(path);
+}
+
+void main_window::open_file(const QString& path)
+{
+    if (path.isEmpty()) {
+        return;
+    }
     try {
         QFile file(path);
         if (!file.exists())
@@ -264,6 +316,12 @@ void main_window::open_file()
         editor->setPlainText(contents);
         current_file = path;
         update_title();
+        if (std::ranges::find(recent_files, path) != recent_files.end()) {
+            std::erase(recent_files, path);
+        }
+        recent_files.insert(recent_files.begin(), path);
+        if (recent_files.size() > 5) recent_files.pop_back();
+        update_recent_files();
     } catch (const notepad_exception& ex) {
         QMessageBox::critical(this, "Error", ex.what());
     }
@@ -312,8 +370,25 @@ void main_window::update_status_bar()
     const QString text = editor->toPlainText();
     const int word_count = text.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts).length();
     const int line_count = text.split('\n').length();
-    statusBar()->showMessage("Words: " + QString::number(word_count) + "  Lines: " + QString::number(line_count));
+    statusBar()->showMessage("Words: " + QString::number(word_count) +
+        "  Lines: " + QString::number(line_count) +
+        "  Line: " + QString::number(editor->textCursor().blockNumber() + 1) +
+        "  Column: " + QString::number(editor->textCursor().columnNumber() + 1));
 }
+
+void main_window::update_recent_files() {
+    recent_files_menu->clear();
+    for (const auto& path : recent_files) {
+        const auto* action_recent = recent_files_menu->addAction(path);
+        connect(action_recent, &QAction::triggered, this, [this, path] {
+            open_file(path);
+        });
+    }
+
+    QSettings settings("MyApp", "Notepad");
+    settings.setValue("recentFiles", QStringList(recent_files.begin(), recent_files.end()));
+}
+
 
 void main_window::show_find_replace_dialog()
 {
