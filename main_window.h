@@ -31,6 +31,7 @@ private:
     void setup_format_toolbar();
     void setup_search_menu();
     void setup_tools_menu();
+    void setup_view_menu();
 
     void open_file();
     void open_file(const QString& path);
@@ -64,6 +65,8 @@ private:
 
     QMenu* recent_files_menu { nullptr };
     std::vector<QString> recent_files;
+
+    int default_font_size;
 };
 
 #endif // MAIN_WINDOW_H

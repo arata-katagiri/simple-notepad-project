@@ -41,6 +41,8 @@ main_window::main_window()
     editor->setContextMenuPolicy(Qt::CustomContextMenu);
     setCentralWidget(editor);
 
+    default_font_size = editor->font().pointSize();
+
     transforms.push_back(std::make_unique<uppercase_transform>());
     transforms.push_back(std::make_unique<lowercase_transform>());
     transforms.push_back(std::make_unique<capitalize_transform>());
@@ -53,6 +55,7 @@ main_window::main_window()
     setup_format_toolbar();
     setup_search_menu();
     setup_tools_menu();
+    setup_view_menu();
 
     update_status_bar();
 
@@ -252,8 +255,8 @@ void main_window::setup_tools_menu()
         auto* menu = new QMenu(this);
         auto cursor = editor->cursorForPosition(pos);
         cursor.select(QTextCursor::WordUnderCursor);
-        if (!checker.is_correct(cursor.selectedText().toStdString())) {
-            std::vector<std::string> suggested = checker.suggestions(cursor.selectedText().toStdString());
+        if (const std::string word = cursor.selectedText().toStdString(); !word.empty() && !checker.is_correct(word)) {
+            std::vector<std::string> suggested = checker.suggestions(word);
             for (const auto& suggestion : suggested) {
                 menu->addAction(QString::fromStdString(suggestion));
             }
@@ -262,8 +265,34 @@ void main_window::setup_tools_menu()
                 editor->setTextCursor(cursor);
             }
         }
+        menu->deleteLater();
     });
 }
+
+void main_window::setup_view_menu() {
+    auto* view_menu = menuBar()->addMenu("View");
+
+    auto* action_zoom_in = view_menu->addAction("Zoom In");
+    action_zoom_in->setShortcut(QKeySequence::ZoomIn);
+    connect(action_zoom_in, &QAction::triggered, this, [this] {
+        editor->zoomIn();
+    });
+
+    auto* action_zoom_out = view_menu->addAction("Zoom Out");
+    action_zoom_out->setShortcut(QKeySequence::ZoomOut);
+    connect(action_zoom_out, &QAction::triggered, this, [this] {
+        editor->zoomOut();
+    });
+
+    auto* action_zoom_reset = view_menu->addAction("Reset Zoom");
+    action_zoom_reset->setShortcut(QKeySequence("Ctrl+0"));
+    connect(action_zoom_reset, &QAction::triggered, this, [this] {
+        QFont font = editor->font();
+        font.setPointSize(default_font_size);
+        editor->setFont(font);
+    });
+}
+
 
 void main_window::apply_transform(const text_transform& transform) const
 {
